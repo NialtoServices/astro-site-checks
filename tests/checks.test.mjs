@@ -122,3 +122,17 @@ describe('a site that has not been built', () => {
     expect(lines.error.join('\n')).toContain('astro build')
   })
 })
+
+describe('pages rendered on demand', () => {
+  it('count as served for links and redirect targets', async () => {
+    const site = await builtSite({
+      'index.html': '<a href="/feedback/">Leave feedback</a>',
+      _redirects: '/feedback /feedback/ 301',
+      '../../src/pages/feedback.astro': '---\nexport const prerender = false\n---\n'
+    })
+    const { report } = recorder()
+
+    expect(await checkLinks({ ...site, report })).toBe(true)
+    expect(await checkRedirects({ ...site, report })).toBe(true)
+  })
+})

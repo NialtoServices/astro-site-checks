@@ -7,6 +7,7 @@
  */
 import { join } from 'node:path'
 import { collectServablePaths } from '../built-site.mjs'
+import { collectOnDemandRoutes, isOnDemand } from '../on-demand.mjs'
 import {
   findBrokenTargets,
   findMissingSpellings,
@@ -26,7 +27,7 @@ function reportFaults(report, heading, faults, describe, remedy) {
   return true
 }
 
-export async function checkRedirects({ clientDirectory, report }) {
+export async function checkRedirects({ clientDirectory, siteDirectory, report }) {
   if (!(await requireBuiltSite(clientDirectory, report))) return false
 
   const text = await readOptionalFile(join(clientDirectory, '_redirects'))
@@ -37,12 +38,13 @@ export async function checkRedirects({ clientDirectory, report }) {
 
   const redirects = parseRedirects(text)
   const servablePaths = await collectServablePaths(clientDirectory)
+  const onDemandRoutes = await collectOnDemandRoutes(siteDirectory)
 
   const failures = [
     reportFaults(
       report,
       'Redirects pointing at a path the build does not serve',
-      findBrokenTargets(redirects, servablePaths),
+      findBrokenTargets(redirects, servablePaths, (path) => isOnDemand(onDemandRoutes, path)),
       ({ source, target }) => `${source} -> ${target}`,
       'Point the rule at a page that exists, or drop it if the destination has gone for good.'
     ),

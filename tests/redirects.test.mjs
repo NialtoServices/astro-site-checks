@@ -63,6 +63,10 @@ describe('findRedirectChains', () => {
 })
 
 describe('findMissingSpellings', () => {
+  it('leaves a rule alone when its target is its own other spelling', () => {
+    expect(findMissingSpellings(new Map([['/feedback', '/feedback/']]))).toEqual([])
+  })
+
   it('reports a page rule whose other trailing-slash spelling has no rule of its own', () => {
     const redirects = new Map([
       ['/old-services/', '/services/'],

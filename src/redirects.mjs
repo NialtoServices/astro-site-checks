@@ -37,11 +37,11 @@ function isConcretePath(path) {
  * A 301 to a missing page is worse than no rule at all: a crawler follows it, finds nothing, and drops the
  * old URL without gaining a replacement.
  */
-export function findBrokenTargets(redirects, servablePaths) {
+export function findBrokenTargets(redirects, servablePaths, isAlsoServed = () => false) {
   const broken = []
   for (const [source, target] of redirects) {
     if (!isConcretePath(target)) continue
-    if (isServable(servablePaths, target)) continue
+    if (isServable(servablePaths, target) || isAlsoServed(target)) continue
 
     broken.push({ source, target })
   }
@@ -104,7 +104,10 @@ export function findMissingSpellings(redirects) {
     if (source === '/' || lastSegment.includes('.')) continue
 
     const otherSpelling = source.endsWith('/') ? source.slice(0, -1) : `${source}/`
-    if (redirects.get(otherSpelling) === target) continue
+
+    // A rule adding or removing the slash on a page's own URL has no other spelling to add: that one
+    // would redirect to itself.
+    if (otherSpelling === target || redirects.get(otherSpelling) === target) continue
 
     missing.push({ source, missing: otherSpelling, target })
   }

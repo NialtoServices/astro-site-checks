@@ -16,6 +16,7 @@ import {
   isServable,
   servedPathOf
 } from '../built-site.mjs'
+import { collectOnDemandRoutes, isOnDemand } from '../on-demand.mjs'
 import { parseRedirects } from '../redirects.mjs'
 import { readOptionalFile, requireBuiltSite } from './built.mjs'
 
@@ -49,11 +50,12 @@ function listFindings(grouped, describeTarget, write) {
   }
 }
 
-export async function checkLinks({ clientDirectory, report }) {
+export async function checkLinks({ clientDirectory, siteDirectory, report }) {
   if (!(await requireBuiltSite(clientDirectory, report))) return false
 
   const redirects = parseRedirects((await readOptionalFile(join(clientDirectory, '_redirects'))) ?? '')
   const servablePaths = await collectServablePaths(clientDirectory)
+  const onDemandRoutes = await collectOnDemandRoutes(siteDirectory)
   const pages = (await collectBuiltFiles(clientDirectory)).filter((file) => file.endsWith('.html'))
 
   const broken = []
@@ -68,7 +70,7 @@ export async function checkLinks({ clientDirectory, report }) {
         continue
       }
 
-      if (isServable(servablePaths, path)) continue
+      if (isServable(servablePaths, path) || isOnDemand(onDemandRoutes, path)) continue
 
       broken.push({ from, path })
     }

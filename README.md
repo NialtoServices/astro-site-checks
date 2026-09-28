@@ -36,6 +36,9 @@ target is listed once, with up to five of the pages that link to it.
 A link to the source of a redirect is a warning rather than a failure: it resolves, but through a 301, so it
 is worth linking straight to the destination.
 
+A page that renders on demand (a file in `src/pages` exporting `prerender = false`) counts as served, since
+the build writes no file for it.
+
 Links to other hosts, including protocol-relative ones (`//cdn.example.com/…`), `mailto:` and `tel:` links,
 in-page anchors and absolute links back to the site's own host are not checked.
 
@@ -48,6 +51,9 @@ Checks every rule in the built `_redirects` for four faults:
 - a target that is itself the source of another rule, which makes a chain;
 - a page rule without its other trailing-slash spelling pointing at the same target. Cloudflare matches a
   rule's source exactly, so without both spellings one of them lands on a 404.
+
+A target served by a page that renders on demand counts as served, and a rule that only adds or removes the
+trailing slash on a page's own URL is not asked for its other spelling.
 
 A placeholder (`:name`, `*`) or a target on another host is skipped only by the faults that would have to
 resolve it: a placeholder rule's concrete target is still checked, and so is the source of a rule pointing at
