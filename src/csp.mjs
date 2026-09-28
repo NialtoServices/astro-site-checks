@@ -16,7 +16,7 @@ const POLICY_HEADERS = ['Content-Security-Policy', 'Content-Security-Policy-Repo
  */
 export function parsePolicy(headers) {
   for (const headerName of POLICY_HEADERS) {
-    const match = headers.match(new RegExp(`^\\s*${headerName}: (.*)$`, 'm'))
+    const match = headers.match(new RegExp(`^\\s*${headerName}: (.*)$`, 'mi'))
     if (!match) continue
 
     const directives = new Map()
@@ -31,6 +31,14 @@ export function parsePolicy(headers) {
   return undefined
 }
 
+/** An attribute's value on one element, or `undefined` when it is absent. */
+function attributeOf(element, name) {
+  return element.match(new RegExp(`\\s${name}="([^"]*)"`, 'i'))?.[1]
+}
+
+/** What a `<link>` loads, judged by its `rel` tokens and, for a preload, what it preloads. */
+const PRELOAD_KIND_FOR_AS = { font: 'font', style: 'style', script: 'script', image: 'img' }
+
 /** Every externally loaded resource in a page, as `{ kind, origin }`. Links are not loads. */
 export function extractLoadedOrigins(html) {
   const loaded = []
@@ -38,8 +46,19 @@ export function extractLoadedOrigins(html) {
     loaded.push({ kind: match[1], origin: new URL(match[2]).origin })
   }
 
-  for (const match of html.matchAll(/<link\b[^>]*?\srel="(stylesheet|preload)"[^>]*?\shref="(https?:\/\/[^"]+)"/g)) {
-    loaded.push({ kind: match[1] === 'stylesheet' ? 'style' : 'preload', origin: new URL(match[2]).origin })
+  // Attributes are read from the whole element, since a `<link>` carries `rel`, `href` and `as` in
+  // whatever order its author wrote them.
+  for (const [element] of html.matchAll(/<link\b[^>]*>/gi)) {
+    const href = attributeOf(element, 'href')
+    if (!href || !/^https?:\/\//i.test(href)) continue
+
+    const relations = (attributeOf(element, 'rel') ?? '').toLowerCase().split(/\s+/)
+    if (relations.includes('stylesheet')) {
+      loaded.push({ kind: 'style', origin: new URL(href).origin })
+    } else if (relations.includes('preload')) {
+      const preloaded = (attributeOf(element, 'as') ?? '').toLowerCase()
+      loaded.push({ kind: PRELOAD_KIND_FOR_AS[preloaded] ?? 'preload', origin: new URL(href).origin })
+    }
   }
 
   return loaded
@@ -50,19 +69,29 @@ const DIRECTIVE_FOR_KIND = {
   img: 'img-src',
   iframe: 'frame-src',
   style: 'style-src',
+  font: 'font-src',
   preload: 'default-src'
 }
 
-/** Whether a policy source covers an origin. A source may name a host wildcard: `https://*.a.com`. */
+/**
+ * Whether a policy source covers an origin. A source may be a scheme (`https:`), a host with or without a
+ * scheme, a host wildcard (`*.a.com`, which covers subdomains and not the domain itself), and may carry a
+ * path, which does not narrow the origin it allows.
+ */
 export function originAllowedBy(source, origin) {
   if (source === '*' || source === origin) return true
 
-  const wildcard = source.match(/^(https?:\/\/)\*\.(.+)$/)
-  if (!wildcard) return false
+  const { protocol, host } = new URL(origin)
+  if (/^[a-z][a-z0-9+.-]*:$/i.test(source)) return source.toLowerCase() === protocol
 
-  const [, scheme, domain] = wildcard
+  const parts = source.match(/^(?:([a-z][a-z0-9+.-]*):\/\/)?([^/]+)/i)
+  if (!parts) return false
 
-  return origin.startsWith(scheme) && origin.slice(scheme.length).endsWith(`.${domain}`)
+  const [, scheme, sourceHost] = parts
+  if (scheme && `${scheme.toLowerCase()}:` !== protocol) return false
+  if (!sourceHost.startsWith('*.')) return sourceHost.toLowerCase() === host
+
+  return host.endsWith(sourceHost.slice(1).toLowerCase())
 }
 
 /**
