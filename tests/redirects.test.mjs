@@ -116,17 +116,37 @@ describe('parseRedirects', () => {
   })
 })
 
-describe('rules the checks leave alone', () => {
-  const redirects = parseRedirects(
-    ['/blog/* /news/:splat 301', '/team/:name /people/:name 301', '/old https://elsewhere.example/ 301'].join('\n')
-  )
+describe('rules with a placeholder or an external target', () => {
+  it('skips each fault only on the side it cannot evaluate', () => {
+    const redirects = parseRedirects(
+      ['/blog/* /news/:splat 301', '/team/:name /people/:name 301', '/old https://elsewhere.example/ 301'].join('\n')
+    )
 
-  it('never reports a placeholder rule or an external target', () => {
-    const servablePaths = new Set()
-
-    expect(findBrokenTargets(redirects, servablePaths)).toEqual([])
-    expect(findShadowedSources(redirects, servablePaths)).toEqual([])
+    expect(findBrokenTargets(redirects, new Set())).toEqual([])
+    expect(findShadowedSources(redirects, new Set())).toEqual([])
     expect(findRedirectChains(redirects)).toEqual([])
-    expect(findMissingSpellings(redirects)).toEqual([])
+    expect(findMissingSpellings(redirects)).toEqual([
+      { source: '/old', missing: '/old/', target: 'https://elsewhere.example/' }
+    ])
+  })
+
+  it('checks the concrete target of a placeholder source', () => {
+    const redirects = parseRedirects('/old-work/* /work/ 301')
+
+    expect(findBrokenTargets(redirects, new Set())).toEqual([{ source: '/old-work/*', target: '/work/' }])
+  })
+
+  it('finds a chain that starts at a placeholder source', () => {
+    const redirects = parseRedirects(['/old/* /mid/ 301', '/mid/ /new/ 301'].join('\n'))
+
+    expect(findRedirectChains(redirects)).toEqual([{ source: '/old/*', target: '/mid/', eventualTarget: '/new/' }])
+  })
+
+  it('reports a shadowed source whose target is on another host', () => {
+    const redirects = parseRedirects('/shop/ https://shop.example/ 301')
+
+    expect(findShadowedSources(redirects, new Set(['/shop/', '/shop/index.html']))).toEqual([
+      { source: '/shop/', target: 'https://shop.example/' }
+    ])
   })
 })

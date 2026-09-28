@@ -49,8 +49,9 @@ Checks every rule in the built `_redirects` for four faults:
 - a page rule without its other trailing-slash spelling pointing at the same target. Cloudflare matches a
   rule's source exactly, so without both spellings one of them lands on a 404.
 
-Rules with placeholders (`:name`, `*`) and rules pointing at another host are skipped. A site with no
-`_redirects` passes.
+A placeholder (`:name`, `*`) or a target on another host is skipped only by the faults that would have to
+resolve it: a placeholder rule's concrete target is still checked, and so is the source of a rule pointing at
+another host. A site with no `_redirects` passes.
 
 ### `css-scope`
 

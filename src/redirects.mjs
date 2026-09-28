@@ -22,13 +22,13 @@ export function parseRedirects(text) {
 }
 
 /**
- * Whether a rule names concrete paths on this site. A placeholder (`:name`, `*`) matches many URLs and a
- * target on another host is not ours to resolve, so neither can be checked against the built files.
+ * Whether one side of a rule is a concrete path on this site. A placeholder (`:name`, `*`) matches many
+ * URLs and a target on another host is not ours to resolve, so each fault is checked only on the side it
+ * reads: a placeholder source can still have a broken target, and an external target can still have a
+ * shadowed source.
  */
-function isCheckable(source, target) {
-  if (!source.startsWith('/') || !target?.startsWith('/')) return false
-
-  return !/[:*]/.test(source) && !/[:*]/.test(target)
+function isConcretePath(path) {
+  return Boolean(path?.startsWith('/')) && !/[:*]/.test(path)
 }
 
 /**
@@ -40,7 +40,7 @@ function isCheckable(source, target) {
 export function findBrokenTargets(redirects, servablePaths) {
   const broken = []
   for (const [source, target] of redirects) {
-    if (!isCheckable(source, target)) continue
+    if (!isConcretePath(target)) continue
     if (isServable(servablePaths, target)) continue
 
     broken.push({ source, target })
@@ -59,7 +59,7 @@ export function findBrokenTargets(redirects, servablePaths) {
 export function findShadowedSources(redirects, servablePaths) {
   const shadowed = []
   for (const [source, target] of redirects) {
-    if (!isCheckable(source, target)) continue
+    if (!isConcretePath(source)) continue
     if (!isServable(servablePaths, source)) continue
 
     shadowed.push({ source, target })
@@ -78,7 +78,7 @@ export function findShadowedSources(redirects, servablePaths) {
 export function findRedirectChains(redirects) {
   const chains = []
   for (const [source, target] of redirects) {
-    if (!isCheckable(source, target)) continue
+    if (!isConcretePath(target)) continue
     if (!redirects.has(target)) continue
 
     chains.push({ source, target, eventualTarget: redirects.get(target) })
@@ -98,7 +98,7 @@ export function findRedirectChains(redirects) {
 export function findMissingSpellings(redirects) {
   const missing = []
   for (const [source, target] of redirects) {
-    if (!isCheckable(source, target)) continue
+    if (!isConcretePath(source)) continue
 
     const lastSegment = source.replace(/\/$/, '').split('/').pop() ?? ''
     if (source === '/' || lastSegment.includes('.')) continue
