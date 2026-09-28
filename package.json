@@ -1,0 +1,40 @@
+{
+  "name": "@nialto-services/astro-site-checks",
+  "version": "0.1.0",
+  "description": "Post-build checks for Nialto's Astro sites: internal links, redirects, scoped CSS and the Content-Security-Policy.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.30.2",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NialtoServices/astro-site-checks.git"
+  },
+  "bin": {
+    "astro-site-checks": "./bin/astro-site-checks.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
+    "prettier": "^3.9.9",
+    "vitest": "^5.0.2"
+  }
+}
