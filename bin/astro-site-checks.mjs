@@ -23,7 +23,18 @@ if (!check) {
 }
 
 const directoryIndex = options.indexOf('--dir')
-const clientDirectory = resolve(directoryIndex === -1 ? DEFAULT_CLIENT_DIRECTORY : options[directoryIndex + 1])
+const directory = directoryIndex === -1 ? DEFAULT_CLIENT_DIRECTORY : options[directoryIndex + 1]
+if (!directory || directory.startsWith('--')) {
+  console.error(USAGE)
+  process.exit(2)
+}
 
-const passed = await check({ clientDirectory, siteDirectory: process.cwd(), report: console })
-process.exit(passed ? 0 : 1)
+// A site's own mistake, such as an unreadable package.json, is reported as its message: a stack trace
+// would read as a fault in this package.
+try {
+  const passed = await check({ clientDirectory: resolve(directory), siteDirectory: process.cwd(), report: console })
+  process.exit(passed ? 0 : 1)
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exit(1)
+}
