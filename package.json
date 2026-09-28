@@ -1,6 +1,6 @@
 {
   "name": "@nialto-services/astro-site-checks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Post-build checks for Nialto's Astro sites: internal links, redirects, scoped CSS and the Content-Security-Policy.",
   "license": "MIT",
   "type": "module",
