@@ -136,3 +136,53 @@ describe('pages rendered on demand', () => {
     expect(await checkRedirects({ ...site, report })).toBe(true)
   })
 })
+
+describe('server islands', () => {
+  const ISLAND_PAGE =
+    '<link rel="preload" as="fetch" href="/_server-islands/RecentPosts/?e=abc&amp;p=def">' +
+    '<script>fetch("/_server-islands/RecentPosts/?e=abc&p=def")</script>'
+  const MANIFEST_PATH = '../server/chunks/_virtual_astro_server-island-manifest_abc123.mjs'
+
+  function manifestDeclaring(names) {
+    const entries = names.map((name) => `["${name}", () => import("../chunks/${name}_a1.mjs")]`)
+    return `var serverIslandMap = /* @__PURE__ */ new Map([${entries.join(', ')}]);\nexport { serverIslandMap };\n`
+  }
+
+  it('count as served when the server build declares them, whatever their query string', async () => {
+    const site = await builtSite({ 'index.html': ISLAND_PAGE, [MANIFEST_PATH]: manifestDeclaring(['RecentPosts']) })
+    const { report } = recorder()
+
+    expect(await checkLinks({ ...site, report })).toBe(true)
+  })
+
+  it('fail as broken when the server build has no island of that name', async () => {
+    const site = await builtSite({ 'index.html': ISLAND_PAGE, [MANIFEST_PATH]: manifestDeclaring(['LatestNews']) })
+    const { lines, report } = recorder()
+
+    expect(await checkLinks({ ...site, report })).toBe(false)
+    expect(lines.error.join('\n')).toContain('Broken internal links (1)')
+    expect(lines.error.join('\n')).toContain('/_server-islands/RecentPosts/')
+  })
+
+  it('fail, saying the manifest could not be read, rather than calling the island broken', async () => {
+    const site = await builtSite({ 'index.html': ISLAND_PAGE })
+    const { lines, report } = recorder()
+
+    expect(await checkLinks({ ...site, report })).toBe(false)
+    expect(lines.error.join('\n')).toContain('Server island links that could not be checked (1)')
+    expect(lines.error.join('\n')).toContain('No server island manifest could be read')
+    expect(lines.error.join('\n')).not.toContain('Broken internal links')
+  })
+
+  it('leave a site with no islands, and no server build, exactly as it was', async () => {
+    const site = await builtSite({ 'index.html': '<a href="/about/">About</a>', 'about/index.html': 'about' })
+    const { lines, report } = recorder()
+
+    expect(await checkLinks({ ...site, report })).toBe(true)
+    expect(lines).toEqual({
+      log: ['Internal links OK: checked 2 pages, every internal link resolves.'],
+      warn: [],
+      error: []
+    })
+  })
+})

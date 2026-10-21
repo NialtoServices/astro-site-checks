@@ -39,6 +39,13 @@ is worth linking straight to the destination.
 A page that renders on demand (a file in `src/pages` exporting `prerender = false`) counts as served, since
 the build writes no file for it.
 
+A link to a server island (`/_server-islands/<name>/`, which Astro adds to a page using `server:defer`)
+counts as served when the server build declares an island of that name, so a link to an island that no
+longer exists still fails. The query string Astro adds to these links changes every build and is not
+compared. The names are read from the server island manifest Astro writes into `dist/server`, next to the
+checked directory. That file is internal build output, so if a page links to an island and no manifest can
+be read, the check fails saying so, rather than reporting every island as broken.
+
 Links to other hosts, including protocol-relative ones (`//cdn.example.com/…`), `mailto:` and `tel:` links,
 in-page anchors and absolute links back to the site's own host are not checked.
 

@@ -6,6 +6,10 @@
  *
  * A link to a redirect *source* is a warning rather than a failure. It resolves, so nobody lands on a 404,
  * but the visitor pays a needless 301, so it is worth linking straight to the destination.
+ *
+ * A link to a server island is checked against the islands the server build declares. When the build
+ * holds no manifest this can read, those links are reported as unchecked and the check fails, rather
+ * than calling every island broken or letting a stale one through.
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -18,6 +22,7 @@ import {
 } from '../built-site.mjs'
 import { collectOnDemandRoutes, isOnDemand } from '../on-demand.mjs'
 import { parseRedirects } from '../redirects.mjs'
+import { collectServerIslands, serverDirectoryOf, serverIslandNameOf } from '../server-islands.mjs'
 import { readOptionalFile, requireBuiltSite } from './built.mjs'
 
 const SOURCES_LISTED_PER_LINK = 5
@@ -56,10 +61,13 @@ export async function checkLinks({ clientDirectory, siteDirectory, report }) {
   const redirects = parseRedirects((await readOptionalFile(join(clientDirectory, '_redirects'))) ?? '')
   const servablePaths = await collectServablePaths(clientDirectory)
   const onDemandRoutes = await collectOnDemandRoutes(siteDirectory)
+  const serverDirectory = serverDirectoryOf(clientDirectory)
+  const serverIslands = await collectServerIslands(serverDirectory)
   const pages = (await collectBuiltFiles(clientDirectory)).filter((file) => file.endsWith('.html'))
 
   const broken = []
   const redirected = []
+  const unchecked = []
   for (const page of pages) {
     const html = await readFile(page, 'utf-8')
     const from = servedPathOf(clientDirectory, page)
@@ -67,6 +75,13 @@ export async function checkLinks({ clientDirectory, siteDirectory, report }) {
     for (const path of extractInternalPaths(html)) {
       if (redirects.has(path)) {
         redirected.push({ from, path })
+        continue
+      }
+
+      const island = serverIslandNameOf(path)
+      if (island !== undefined) {
+        if (serverIslands === undefined) unchecked.push({ from, path })
+        else if (!serverIslands.has(island)) broken.push({ from, path })
         continue
       }
 
@@ -87,6 +102,21 @@ export async function checkLinks({ clientDirectory, siteDirectory, report }) {
     report.warn('\nThese resolve, but through a 301. Link straight to the destination.\n')
   }
 
+  if (unchecked.length > 0) {
+    const grouped = groupByPath(unchecked)
+    report.error(`\nServer island links that could not be checked (${grouped.size}):\n`)
+    listFindings(
+      grouped,
+      () => '',
+      (line) => report.error(line)
+    )
+    report.error(
+      `\nNo server island manifest could be read from ${serverDirectory}. Astro writes one into its server ` +
+        'build, which this check expects beside the client build. If it is there, its format has changed ' +
+        'and this package needs updating to read it.\n'
+    )
+  }
+
   if (broken.length > 0) {
     const grouped = groupByPath(broken)
     report.error(`\nBroken internal links (${grouped.size}):\n`)
@@ -96,8 +126,9 @@ export async function checkLinks({ clientDirectory, siteDirectory, report }) {
       (line) => report.error(line)
     )
     report.error('')
-    return false
   }
+
+  if (unchecked.length > 0 || broken.length > 0) return false
 
   report.log(
     `Internal links OK: checked ${pages.length} pages, every internal link resolves` +
