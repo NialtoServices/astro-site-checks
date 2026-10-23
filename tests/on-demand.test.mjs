@@ -1,8 +1,10 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { collectOnDemandRoutes, isOnDemand } from '../src/on-demand.mjs'
+import { segment } from './arbitraries.mjs'
 
 async function siteWithPages(pages) {
   const siteDirectory = await mkdtemp(join(tmpdir(), 'site-checks-'))
@@ -46,5 +48,34 @@ describe('collectOnDemandRoutes', () => {
 
     expect(isOnDemand(routes, '/about/')).toBe(false)
     expect(await collectOnDemandRoutes(join(tmpdir(), 'no-such-site'))).toEqual([])
+  })
+})
+
+describe('properties', () => {
+  /** A page's route segments, each either fixed or a `[param]`, with a value for every param. */
+  const route = fc.array(
+    fc.oneof(
+      segment.map((name) => ({ file: name, url: fc.constant(name) })),
+      segment.map((name) => ({ file: `[${name}]`, url: segment }))
+    ),
+    { minLength: 1, maxLength: 3 }
+  )
+  const scenario = route.chain((parts) =>
+    fc.tuple(fc.constant(parts.map(({ file }) => file)), fc.tuple(...parts.map(({ url }) => url)), fc.boolean())
+  )
+
+  it("matches an on-demand page's URL in either spelling, and nothing a segment deeper", async () => {
+    await fc.assert(
+      fc.asyncProperty(scenario, async ([fileSegments, urlSegments, asIndex]) => {
+        const file = asIndex ? `${fileSegments.join('/')}/index.astro` : `${fileSegments.join('/')}.astro`
+        const routes = await collectOnDemandRoutes(await siteWithPages({ [file]: ON_DEMAND }))
+        const url = `/${urlSegments.join('/')}`
+
+        expect(isOnDemand(routes, `${url}/`)).toBe(true)
+        expect(isOnDemand(routes, url)).toBe(true)
+        expect(isOnDemand(routes, `${url}/deeper/`)).toBe(false)
+      }),
+      { numRuns: 25 }
+    )
   })
 })

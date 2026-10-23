@@ -1,5 +1,10 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { extractInternalPaths, isServable, servedPathOf } from '../src/built-site.mjs'
+import { collectServablePaths, extractInternalPaths, isServable, servedPathOf } from '../src/built-site.mjs'
+import { barePagePath, filePath, lineOfText, pagePath } from './arbitraries.mjs'
 
 const servablePaths = new Set(['/about-us/', '/about-us/index.html', '/sitemap-index.xml', '/favicon.ico'])
 
@@ -54,5 +59,72 @@ describe('extractInternalPaths', () => {
     const html = '<script src="//cdn.example.com/a.js"></script><a href="//example.com/about/">About</a>'
 
     expect(extractInternalPaths(html)).toEqual([])
+  })
+})
+
+describe('properties', () => {
+  it('serves every built page and file at the path a link would use, and nothing it did not build', async () => {
+    const build = fc.record({
+      pages: fc.uniqueArray(barePagePath, { maxLength: 6 }),
+      files: fc.uniqueArray(filePath, { maxLength: 6 })
+    })
+
+    await fc.assert(
+      fc.asyncProperty(build, async ({ pages, files }) => {
+        const directory = await mkdtemp(join(tmpdir(), 'site-checks-'))
+        const pageFiles = pages.map((page) => join(directory, page, 'index.html'))
+        for (const file of [...pageFiles, ...files.map((path) => join(directory, path))]) {
+          await mkdir(dirname(file), { recursive: true })
+          await writeFile(file, '')
+        }
+
+        const servablePaths = await collectServablePaths(directory)
+        for (const [index, page] of pages.entries()) {
+          expect(servedPathOf(directory, pageFiles[index])).toBe(`${page}/`)
+          expect(isServable(servablePaths, `${page}/`)).toBe(true)
+          expect(isServable(servablePaths, page)).toBe(true)
+        }
+        for (const file of files) expect(isServable(servablePaths, file)).toBe(true)
+
+        // Generated segments are lowercase, so an uppercase one names a path no build here wrote.
+        expect(isServable(servablePaths, '/Unbuilt/')).toBe(false)
+      }),
+      { numRuns: 25 }
+    )
+  })
+
+  it("keeps a root-relative link's path, whatever query string or fragment follows it", () => {
+    const suffix = fc.tuple(
+      fc.option(lineOfText.map((text) => `?${text}`)),
+      fc.option(lineOfText.map((text) => `#${text}`))
+    )
+    const attributeSafe = (text) => !text.includes('"')
+
+    fc.assert(
+      fc.property(fc.oneof(pagePath, filePath), suffix, (path, [query, fragment]) => {
+        const href = `${path}${query ?? ''}${fragment ?? ''}`
+        fc.pre(attributeSafe(href))
+
+        expect(extractInternalPaths(`<a href="${href}">link</a>`)).toEqual([path])
+      })
+    )
+  })
+
+  it('drops every link that leaves the site or stays on the page', () => {
+    const external = fc.oneof(
+      pagePath.map((path) => `https://elsewhere.example${path}`),
+      pagePath.map((path) => `//cdn.example${path}`),
+      fc.constant('mailto:hello@example.com'),
+      fc.constant('tel:+441234567890'),
+      pagePath.map((path) => `#${path.slice(1)}`)
+    )
+
+    fc.assert(
+      fc.property(fc.array(external, { maxLength: 5 }), (hrefs) => {
+        const html = hrefs.map((href) => `<a href="${href}">link</a>`).join('')
+
+        expect(extractInternalPaths(html)).toEqual([])
+      })
+    )
   })
 })

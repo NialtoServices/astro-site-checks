@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import {
   findBrokenTargets,
@@ -6,6 +7,7 @@ import {
   findShadowedSources,
   parseRedirects
 } from '../src/redirects.mjs'
+import { barePagePath, lineOfText, pagePath } from './arbitraries.mjs'
 
 const servablePaths = new Set(['/contact-us/', '/contact-us/index.html', '/sitemap-index.xml'])
 
@@ -152,5 +154,177 @@ describe('rules with a placeholder or an external target', () => {
     expect(findShadowedSources(redirects, new Set(['/shop/', '/shop/index.html']))).toEqual([
       { source: '/shop/', target: 'https://shop.example/' }
     ])
+  })
+})
+
+describe('properties', () => {
+  /** The paths a build that wrote these pages serves, as `collectServablePaths` reads them. */
+  function servablePathsFor(bareBuiltPaths) {
+    return new Set(bareBuiltPaths.flatMap((path) => [`${path}/`, `${path}/index.html`]))
+  }
+
+  /** Rules with distinct sources, as a `_redirects` file can hold them. */
+  const rules = fc.uniqueArray(fc.tuple(pagePath, pagePath), { selector: ([source]) => source, maxLength: 8 })
+
+  it('reads back every rule, whatever comments, blank lines, spacing and line endings surround it', () => {
+    const indent = fc.constantFrom('', ' ', '\t')
+    const gap = fc.constantFrom(' ', '  ', '\t', ' \t ')
+    const filler = fc.oneof(
+      fc.constant(''),
+      lineOfText.map((text) => `# ${text}`)
+    )
+    const writtenRule = ([source, target]) =>
+      fc
+        .tuple(indent, gap, gap, fc.array(filler, { maxLength: 2 }))
+        .map(([before, firstGap, secondGap, lines]) => [
+          ...lines,
+          `${before}${source}${firstGap}${target}${secondGap}301`
+        ])
+    const file = rules.chain((generated) =>
+      fc.tuple(fc.constant(generated), fc.tuple(...generated.map(writtenRule)), fc.constantFrom('\n', '\r\n'))
+    )
+
+    fc.assert(
+      fc.property(file, ([generated, written, lineEnding]) => {
+        expect([...parseRedirects(written.flat().join(lineEnding))]).toEqual(generated)
+      })
+    )
+  })
+
+  it('reports a target exactly when the build does not serve it, in either spelling', () => {
+    const scenario = fc.uniqueArray(fc.tuple(barePagePath, fc.boolean(), fc.boolean()), {
+      selector: ([path]) => path,
+      minLength: 1,
+      maxLength: 8
+    })
+
+    fc.assert(
+      fc.property(scenario, (pages) => {
+        const servablePaths = servablePathsFor(pages.filter(([, built]) => built).map(([path]) => path))
+        const redirects = new Map(
+          pages.map(([path, , slash], index) => [`/retired-${index}/`, slash ? `${path}/` : path])
+        )
+        const broken = pages.filter(([, built]) => !built).map(([path, , slash]) => (slash ? `${path}/` : path))
+
+        expect(findBrokenTargets(redirects, servablePaths).map(({ target }) => target)).toEqual(broken)
+      })
+    )
+  })
+
+  it('never reports a placeholder or another host as a broken target', () => {
+    const target = fc.oneof(
+      barePagePath.map((path) => `${path}/:splat`),
+      barePagePath.map((path) => `${path}/*`),
+      barePagePath.map((path) => `https://elsewhere.example${path}/`)
+    )
+
+    fc.assert(
+      fc.property(fc.array(target, { maxLength: 8 }), (targets) => {
+        const redirects = new Map(targets.map((value, index) => [`/retired-${index}/`, value]))
+
+        expect(findBrokenTargets(redirects, new Set())).toEqual([])
+      })
+    )
+  })
+
+  it('reports a source exactly when the build serves a page there', () => {
+    const scenario = fc.uniqueArray(fc.tuple(barePagePath, fc.boolean(), fc.boolean()), {
+      selector: ([path]) => path,
+      maxLength: 8
+    })
+
+    fc.assert(
+      fc.property(scenario, (pages) => {
+        const servablePaths = servablePathsFor(pages.filter(([, built]) => built).map(([path]) => path))
+        const redirects = new Map(pages.map(([path, , slash]) => [slash ? `${path}/` : path, '/destination/']))
+        const shadowed = pages.filter(([, built]) => built).map(([path, , slash]) => (slash ? `${path}/` : path))
+
+        expect(findShadowedSources(redirects, servablePaths).map(({ source }) => source)).toEqual(shadowed)
+      })
+    )
+  })
+
+  /** Rules from under `/old` to under `/new`, so no target can be another rule's source. */
+  const oneHopRules = fc.uniqueArray(fc.tuple(barePagePath, barePagePath), {
+    selector: ([source]) => source,
+    minLength: 2,
+    maxLength: 8
+  })
+
+  it("finds no chain when no target is another rule's source", () => {
+    fc.assert(
+      fc.property(oneHopRules, (generated) => {
+        const redirects = new Map(generated.map(([source, target]) => [`/old${source}/`, `/new${target}/`]))
+
+        expect(findRedirectChains(redirects)).toEqual([])
+      })
+    )
+  })
+
+  it("finds exactly the hop added by pointing one rule at another's source", () => {
+    const scenario = oneHopRules.chain((generated) =>
+      fc.tuple(
+        fc.constant(generated),
+        fc.integer({ min: 0, max: generated.length - 1 }),
+        fc.integer({ min: 1, max: generated.length - 1 })
+      )
+    )
+
+    fc.assert(
+      fc.property(scenario, ([generated, first, offset]) => {
+        const redirects = new Map(generated.map(([source, target]) => [`/old${source}/`, `/new${target}/`]))
+        const [source] = generated[first]
+        const [middle, final] = generated[(first + offset) % generated.length]
+        redirects.set(`/old${source}/`, `/old${middle}/`)
+
+        expect(findRedirectChains(redirects)).toEqual([
+          { source: `/old${source}/`, target: `/old${middle}/`, eventualTarget: `/new${final}/` }
+        ])
+      })
+    )
+  })
+
+  /** Page rules carried in both trailing-slash spellings, each pair pointing at one page. */
+  const pairedRules = fc.uniqueArray(fc.tuple(barePagePath, pagePath), {
+    selector: ([source]) => source,
+    minLength: 1,
+    maxLength: 8
+  })
+
+  function bothSpellings(generated) {
+    return new Map(
+      generated.flatMap(([source, target]) => [
+        [source, target],
+        [`${source}/`, target]
+      ])
+    )
+  }
+
+  it('asks for no spelling when every page rule carries both', () => {
+    fc.assert(
+      fc.property(pairedRules, (generated) => {
+        expect(findMissingSpellings(bothSpellings(generated))).toEqual([])
+      })
+    )
+  })
+
+  it('asks for exactly the spelling dropped from a rule carried in both', () => {
+    const scenario = pairedRules.chain((generated) =>
+      fc.tuple(fc.constant(generated), fc.integer({ min: 0, max: generated.length - 1 }), fc.boolean())
+    )
+
+    fc.assert(
+      fc.property(scenario, ([generated, index, dropSlashed]) => {
+        const [source, target] = generated[index]
+        const kept = dropSlashed ? source : `${source}/`
+        const dropped = dropSlashed ? `${source}/` : source
+        fc.pre(target !== dropped)
+
+        const redirects = bothSpellings(generated)
+        redirects.delete(dropped)
+
+        expect(findMissingSpellings(redirects)).toEqual([{ source: kept, missing: dropped, target }])
+      })
+    )
   })
 })
