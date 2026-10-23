@@ -1,12 +1,12 @@
 # @nialto-services/astro-site-checks
 
-Post-build checks for Nialto's Astro sites. Each one reads the built site in `dist/client` and fails when
-something is wrong that the build itself never complains about: a link to a page that does not exist, a
-redirect that has stopped working, a scoped style rule that can never apply, or a page loading from an
-origin the site's Content-Security-Policy does not allow.
+Post-build checks for Astro sites. Each one reads the built site in `dist/client` and fails when something is
+wrong that the build itself never complains about: a link to a page that does not exist, a redirect that has
+stopped working, a scoped style rule that can never apply, or a page loading from an origin the site's
+Content-Security-Policy does not allow.
 
-The checks used to live as scripts copied into each site, and the copies drifted. This package is the one
-copy every site runs.
+They are written for sites deployed to Cloudflare: the `redirects` and `headers` checks read the `_redirects`
+and `_headers` files Cloudflare serves.
 
 ## Install
 
@@ -14,7 +14,7 @@ copy every site runs.
 pnpm add -D @nialto-services/astro-site-checks
 ```
 
-Then add the four scripts every site uses to its `package.json`:
+Then add a script for each check to the site's `package.json`:
 
 ```json
 "lint:links": "astro-site-checks links",
@@ -79,8 +79,8 @@ Fails when a built page loads a script, image, frame, stylesheet or preloaded fi
 Content-Security-Policy does not allow. The enforced `Content-Security-Policy` header is read if the site ships
 one, otherwise `Content-Security-Policy-Report-Only`.
 
-Every site ships a policy, so a site whose built `_headers` has none fails this check. Origins a tag manager
-injects while the page runs cannot be seen by a check of the built files.
+A site whose built `_headers` has no policy fails this check, since there is nothing to check its pages
+against. Origins a tag manager injects while the page runs cannot be seen by a check of the built files.
 
 ## Configuration
 

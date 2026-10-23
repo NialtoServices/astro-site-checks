@@ -20,8 +20,8 @@ export async function checkHeaders({ clientDirectory, siteDirectory, report }) {
   const policy = parsePolicy((await readOptionalFile(join(clientDirectory, '_headers'))) ?? '')
   if (!policy) {
     report.error(
-      'No Content-Security-Policy in the built _headers. Every site ships one: add a ' +
-        'Content-Security-Policy-Report-Only header for /* to public/_headers.'
+      'No Content-Security-Policy in the built _headers, so there is nothing to check the pages against: ' +
+        'add a Content-Security-Policy-Report-Only header for /* to public/_headers.'
     )
     return false
   }
