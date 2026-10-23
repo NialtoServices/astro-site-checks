@@ -2,11 +2,12 @@ import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
 
 const run = promisify(execFile)
-const COMMAND = new URL('../bin/astro-site-checks.mjs', import.meta.url).pathname
+const COMMAND = fileURLToPath(new URL('../bin/astro-site-checks.mjs', import.meta.url))
 
 async function runCommand(argumentsList, cwd) {
   try {
