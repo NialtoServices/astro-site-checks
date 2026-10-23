@@ -29,6 +29,7 @@
   ],
   "scripts": {
     "test": "vitest run",
+    "prepublishOnly": "pnpm format:check && pnpm test",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
