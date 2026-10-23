@@ -16,7 +16,7 @@
     "url": "git+https://github.com/NialtoServices/astro-site-checks.git"
   },
   "bin": {
-    "astro-site-checks": "./bin/astro-site-checks.mjs"
+    "astro-site-checks": "bin/astro-site-checks.mjs"
   },
   "exports": {
     ".": "./src/index.mjs"

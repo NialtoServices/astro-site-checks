@@ -5,7 +5,7 @@ const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.
 
 describe('package manifest', () => {
   it('ships the command and nothing it does not need', () => {
-    expect(manifest.bin['astro-site-checks']).toBe('./bin/astro-site-checks.mjs')
+    expect(manifest.bin['astro-site-checks']).toBe('bin/astro-site-checks.mjs')
     expect(manifest.files).toEqual(['bin', 'src', 'LICENSE', 'README.md'])
     expect(manifest.dependencies).toBeUndefined()
   })
