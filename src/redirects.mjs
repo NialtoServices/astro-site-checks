@@ -5,7 +5,7 @@
  * A redirect usually carries an inbound link a previous site earned, so a rule that fails loses that link
  * silently: nothing in the build errors, and the only symptom is a 404 a crawler finds months later.
  */
-import { isServable } from './built-site.mjs'
+import { isServable, pathOf } from './built-site.mjs'
 
 /** `source target status` lines, comments and blanks skipped, as a source → target map. */
 export function parseRedirects(text) {
@@ -32,7 +32,9 @@ function isConcretePath(path) {
 }
 
 /**
- * Rules whose target the build does not serve.
+ * Rules whose target the build does not serve, judged by the target's path: a target such as
+ * `/contact/#form` resolves when `/contact/` does. Each fault is reported with the target as written, so
+ * it reads the same as the rule in `_redirects`.
  *
  * A 301 to a missing page is worse than no rule at all: a crawler follows it, finds nothing, and drops the
  * old URL without gaining a replacement.
@@ -41,7 +43,9 @@ export function findBrokenTargets(redirects, servablePaths, isAlsoServed = () =>
   const broken = []
   for (const [source, target] of redirects) {
     if (!isConcretePath(target)) continue
-    if (isServable(servablePaths, target) || isAlsoServed(target)) continue
+
+    const path = pathOf(target)
+    if (isServable(servablePaths, path) || isAlsoServed(path)) continue
 
     broken.push({ source, target })
   }

@@ -24,6 +24,28 @@ describe('findBrokenTargets', () => {
     ])
   })
 
+  it('judges a target by its path, so a fragment or query string on a served page resolves', () => {
+    const redirects = new Map([
+      ['/enquire/', '/contact-us/#form'],
+      ['/enquire', '/contact-us/?topic=quote'],
+      ['/quote/', '/contact-us/?topic=quote#form']
+    ])
+
+    expect(findBrokenTargets(redirects, servablePaths)).toEqual([])
+  })
+
+  it('reports a target whose path is not served, as written, fragment and query string included', () => {
+    const redirects = new Map([
+      ['/old-section/', '/missing/#section'],
+      ['/old-search/', '/missing/?q=x']
+    ])
+
+    expect(findBrokenTargets(redirects, servablePaths)).toEqual([
+      { source: '/old-section/', target: '/missing/#section' },
+      { source: '/old-search/', target: '/missing/?q=x' }
+    ])
+  })
+
   it('leaves a target on another host alone', () => {
     const redirects = new Map([['/elsewhere/', 'https://example.com/']])
 
@@ -191,20 +213,24 @@ describe('properties', () => {
     )
   })
 
-  it('reports a target exactly when the build does not serve it, in either spelling', () => {
-    const scenario = fc.uniqueArray(fc.tuple(barePagePath, fc.boolean(), fc.boolean()), {
+  it('reports a target exactly when the build does not serve its path, whatever spelling, query or fragment', () => {
+    // A `:` or `*` makes a target read as a placeholder, which the check skips rather than resolves.
+    const queryAndFragment = fc
+      .tuple(fc.option(lineOfText.map((text) => `?${text}`)), fc.option(lineOfText.map((text) => `#${text}`)))
+      .map(([query, fragment]) => `${query ?? ''}${fragment ?? ''}`)
+      .filter((suffix) => !/[:*]/.test(suffix))
+    const scenario = fc.uniqueArray(fc.tuple(barePagePath, fc.boolean(), fc.boolean(), queryAndFragment), {
       selector: ([path]) => path,
       minLength: 1,
       maxLength: 8
     })
+    const targetOf = ([path, , slash, suffix]) => `${slash ? `${path}/` : path}${suffix}`
 
     fc.assert(
       fc.property(scenario, (pages) => {
         const servablePaths = servablePathsFor(pages.filter(([, built]) => built).map(([path]) => path))
-        const redirects = new Map(
-          pages.map(([path, , slash], index) => [`/retired-${index}/`, slash ? `${path}/` : path])
-        )
-        const broken = pages.filter(([, built]) => !built).map(([path, , slash]) => (slash ? `${path}/` : path))
+        const redirects = new Map(pages.map((page, index) => [`/retired-${index}/`, targetOf(page)]))
+        const broken = pages.filter(([, built]) => !built).map(targetOf)
 
         expect(findBrokenTargets(redirects, servablePaths).map(({ target }) => target)).toEqual(broken)
       })

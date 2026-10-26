@@ -61,6 +61,29 @@ describe('checkRedirects', () => {
     expect(lines.log.join('\n')).toContain('No _redirects')
   })
 
+  it('passes a rule whose target is a served page with a fragment or query string', async () => {
+    const site = await builtSite({
+      'contact/index.html': 'contact',
+      _redirects: [
+        '/enquire/ /contact/#form 301',
+        '/enquire /contact/#form 301',
+        '/quote/ /contact/?topic=quote 301',
+        '/quote /contact/?topic=quote 301'
+      ].join('\n')
+    })
+    const { report } = recorder()
+
+    expect(await checkRedirects({ ...site, report })).toBe(true)
+  })
+
+  it('fails a target whose page is not served, quoting the target as the rule writes it', async () => {
+    const site = await builtSite({ _redirects: '/enquire/ /missing/#form 301\n/enquire /missing/#form 301' })
+    const { lines, report } = recorder()
+
+    expect(await checkRedirects({ ...site, report })).toBe(false)
+    expect(lines.error.join('\n')).toContain('/enquire/ -> /missing/#form')
+  })
+
   it('fails a rule missing its other trailing-slash spelling', async () => {
     const site = await builtSite({ 'new/index.html': 'new', _redirects: '/old/ /new/ 301' })
     const { report } = recorder()
@@ -127,7 +150,7 @@ describe('pages rendered on demand', () => {
   it('count as served for links and redirect targets', async () => {
     const site = await builtSite({
       'index.html': '<a href="/feedback/">Leave feedback</a>',
-      _redirects: '/feedback /feedback/ 301',
+      _redirects: '/feedback /feedback/ 301\n/comments/ /feedback/#form 301\n/comments /feedback/#form 301',
       '../../src/pages/feedback.astro': '---\nexport const prerender = false\n---\n'
     })
     const { report } = recorder()

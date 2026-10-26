@@ -45,6 +45,14 @@ export async function collectServablePaths(directory) {
 }
 
 /**
+ * A root-relative URL reduced to the path a request asks the server for. The query string never changes
+ * which file is served, and the browser never sends the fragment at all.
+ */
+export function pathOf(url) {
+  return url.replace(/[#?].*$/, '')
+}
+
+/**
  * Whether a path resolves against the built site, allowing for the trailing slash
  * `trailingSlash: 'always'` adds and for a directory's `index.html`.
  */
@@ -68,7 +76,7 @@ export function extractInternalPaths(html) {
   for (const [, href] of html.matchAll(HREF_PATTERN)) {
     if (!href.startsWith('/') || href.startsWith('//')) continue
 
-    paths.push(href.replace(/[#?].*$/, ''))
+    paths.push(pathOf(href))
   }
 
   return paths
