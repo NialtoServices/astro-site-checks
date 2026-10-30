@@ -42,7 +42,9 @@ jobs:
       contents: read
 
       # npm's trusted publishing trades this workflow's OIDC token for a one-time publish credential, so no npm
-      # token is stored anywhere, and the release carries provenance linking it to this commit and workflow.
+      # token is stored anywhere, and the release carries provenance linking it to this commit and workflow. The trusted
+      # publisher on npmjs.com names this repository and this file, so renaming the workflow stops releases until the
+      # publisher is updated to match.
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -58,5 +60,6 @@ jobs:
       - run: npm install --global npm@^11.15.0
 
       # Staging uploads the release without making it installable: it goes live only once a maintainer approves it on
-      # npmjs.com with two-factor authentication, which this workflow's token can't do.
+      # npmjs.com (Staged Packages) or with `npm stage approve <stage-id>`, both behind two-factor authentication, which
+      # this workflow's token can't do. The trusted publisher permits staging only, so a plain `npm publish` is refused.
       - run: npm stage publish --provenance
