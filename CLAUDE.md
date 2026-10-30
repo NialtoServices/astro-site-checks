@@ -4,12 +4,8 @@ A public npm package of post-build checks for Astro sites. Its README ships to n
 
 ## Hard rules
 
-- **Keep the package generic.** Never write the names or domains of the sites that use it, or any other personal or
-  identifying information, into the repository: code, comments, tests, fixtures, the README, commit messages and pull
-  requests. Fixtures and examples use generic component names and reserved placeholders such as `example.com`.
-- **Explain a change by what it does, never by who needed it.** Describe the general shape of the problem it handles,
-  not where it came up: a commit says "count server island routes as served", not "fix the false failure a site
-  reported".
+- **Fixtures and examples use generic component names**, such as `RecentPosts`, never one taken from a site using the
+  package.
 
 ## Releasing
 
